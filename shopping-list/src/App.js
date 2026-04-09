@@ -1,27 +1,42 @@
 import React, { useState } from 'react';
 import { 
   Container, Paper, Typography, TextField, IconButton, 
-  Box, List, ListItem, ListItemText, Divider 
+  Box, List, ListItem, ListItemText, Checkbox, ListItemSecondaryAction 
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 
 const App = () => {
-  // 1. Khởi tạo State
   const [items, setItems] = useState([]); 
   const [inputValue, setInputValue] = useState('');
 
-  // 2. Hàm xử lý khi click nút thêm (Đoạn bạn yêu cầu)
   const handleAddButtonClick = () => {
-    if (!inputValue.trim()) return; // Không thêm nếu chỉ toàn khoảng trắng
-    
+    if (!inputValue.trim()) return;
     const newItem = { 
       itemName: inputValue.trim(), 
       quantity: 1, 
       isSelected: false 
     };
+    setItems([...items, newItem]);
+    setInputValue('');
+  };
 
-    setItems([...items, newItem]); // Cập nhật danh sách mới
-    setInputValue(''); // Xóa nội dung trong ô nhập sau khi thêm
+  // 1. Hàm Toggle trạng thái hoàn thành (Đoạn bạn yêu cầu)
+  const toggleComplete = (index) => {
+    const newItems = [...items];
+    newItems[index].isSelected = !newItems[index].isSelected;
+    setItems(newItems);
+  };
+
+  // 2. Hàm thay đổi số lượng (Đoạn bạn yêu cầu)
+  const handleQuantityChange = (index, delta) => {
+    const newItems = [...items];
+    const newQty = newItems[index].quantity + delta;
+    if (newQty >= 1) { // Đảm bảo không giảm xuống dưới 1
+      newItems[index].quantity = newQty;
+      setItems(newItems);
+    }
   };
 
   return (
@@ -31,15 +46,12 @@ const App = () => {
           Shopping List
         </Typography>
 
-        {/* Khu vực nhập liệu */}
         <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
           <TextField
             fullWidth
             label="Add an item..."
-            variant="outlined"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            // Cho phép nhấn Enter để thêm
             onKeyPress={(e) => e.key === 'Enter' && handleAddButtonClick()}
           />
           <IconButton color="primary" onClick={handleAddButtonClick}>
@@ -47,27 +59,39 @@ const App = () => {
           </IconButton>
         </Box>
 
-        <Divider />
-
-        {/* Khu vực hiển thị danh sách (Đoạn bạn yêu cầu) */}
         <List>
-          {items.length === 0 ? (
-            <Typography align="center" sx={{ py: 3, color: 'text.secondary' }}>
-              Your list is empty
-            </Typography>
-          ) : (
-            items.map((item, index) => (
-              <ListItem key={index} divider>
-                <ListItemText 
-                  primary={item.itemName} 
-                  secondary={item.isSelected ? "Completed" : "Pending"}
-                />
-                <Typography variant="h6" sx={{ mr: 2, fontWeight: 'bold' }}>
+          {items.map((item, index) => (
+            <ListItem key={index} divider>
+              {/* Checkbox để gọi hàm toggleComplete */}
+              <Checkbox 
+                checked={item.isSelected} 
+                onChange={() => toggleComplete(index)} 
+              />
+              
+              <ListItemText 
+                primary={item.itemName} 
+                sx={{ 
+                  textDecoration: item.isSelected ? 'line-through' : 'none',
+                  color: item.isSelected ? 'text.disabled' : 'text.primary'
+                }}
+              />
+
+              {/* Khu vực nút bấm để gọi hàm handleQuantityChange */}
+              <ListItemSecondaryAction sx={{ display: 'flex', alignItems: 'center' }}>
+                <IconButton size="small" onClick={() => handleQuantityChange(index, -1)}>
+                  <ChevronLeftIcon />
+                </IconButton>
+                
+                <Typography sx={{ mx: 1, fontWeight: 'bold' }}>
                   {item.quantity}
                 </Typography>
-              </ListItem>
-            ))
-          )}
+                
+                <IconButton size="small" onClick={() => handleQuantityChange(index, 1)}>
+                  <ChevronRightIcon />
+                </IconButton>
+              </ListItemSecondaryAction>
+            </ListItem>
+          ))}
         </List>
       </Paper>
     </Container>
