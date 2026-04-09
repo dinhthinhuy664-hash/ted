@@ -1,34 +1,61 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Container, Paper, Typography, TextField, IconButton, 
-  Box, List, ListItem, ListItemText, Checkbox, 
-  ListItemSecondaryAction, Alert, Divider, Stack 
+  List, ListItem, ListItemText, Checkbox, 
+  ListItemSecondaryAction, Alert, Divider, Box, Stack 
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import ShoppingBagIcon from '@mui/icons-material/ShoppingBag';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+
+// Import kết nối Firebase
+import { db } from './firebase';
+import { 
+  collection, 
+  addDoc, 
+  onSnapshot, 
+  query, 
+  updateDoc, 
+  doc, 
+  orderBy,
+  serverTimestamp 
+} from "firebase/firestore";
 
 const App = () => {
   const [items, setItems] = useState([]); 
   const [inputValue, setInputValue] = useState('');
   const [totalItemCount, setTotalItemCount] = useState(0);
-  const [error, setError] = useState(''); // State để quản lý thông báo lỗi trùng tên
+  const [error, setError] = useState('');
 
-  // 1. Logic tính tổng: Chỉ tính những mục CHƯA hoàn thành (isSelected === false)
+  // 1. Lắng nghe dữ liệu Real-time từ Firestore
+  useEffect(() => {
+    const q = query(collection(db, "shopping-items"), orderBy("createdAt", "desc"));
+    
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const itemsArray = [];
+      querySnapshot.forEach((doc) => {
+        itemsArray.push({ ...doc.data(), id: doc.id });
+      });
+      setItems(itemsArray);
+    });
+
+    return () => unsubscribe(); // Hủy lắng nghe khi component unmount
+  }, []);
+
+  // 2. Tự động tính tổng (Chỉ tính các món chưa hoàn thành)
   useEffect(() => {
     const total = items
-      .filter(item => !item.isSelected) // Lọc lấy các món chưa tick
+      .filter(item => !item.isSelected)
       .reduce((sum, item) => sum + item.quantity, 0);
     setTotalItemCount(total);
   }, [items]);
 
-  // 2. Logic thêm món đồ: Kiểm tra trùng lặp
-  const handleAddButtonClick = () => {
+  // 3. Hàm thêm món mới lên Firebase (Có check trùng tên)
+  const handleAddButtonClick = async () => {
     const trimmedValue = inputValue.trim();
     if (!trimmedValue) return;
 
-    // Kiểm tra xem tên đã tồn tại chưa (không phân biệt hoa thường)
     const isDuplicate = items.some(
       (item) => item.itemName.toLowerCase() === trimmedValue.toLowerCase()
     );
@@ -38,86 +65,90 @@ const App = () => {
       return;
     }
 
-    const newItem = { 
-      itemName: trimmedValue, 
-      quantity: 1, 
-      isSelected: false 
-    };
-
-    setItems([...items, newItem]);
-    setInputValue('');
-    setError(''); // Xóa thông báo lỗi sau khi thêm thành công
+    try {
+      await addDoc(collection(db, "shopping-items"), {
+        itemName: trimmedValue,
+        quantity: 1,
+        isSelected: false,
+        createdAt: serverTimestamp() // Lưu thời gian để sắp xếp
+      });
+      setInputValue('');
+      setError('');
+    } catch (err) {
+      console.error("Error adding document: ", err);
+    }
   };
 
-  const toggleComplete = (index) => {
-    const newItems = [...items];
-    newItems[index].isSelected = !newItems[index].isSelected;
-    setItems(newItems);
+  // 4. Hàm Toggle hoàn thành lên Firebase
+  const toggleComplete = async (id, currentStatus) => {
+    const itemRef = doc(db, "shopping-items", id);
+    await updateDoc(itemRef, { isSelected: !currentStatus });
   };
 
-  const handleQuantityChange = (index, delta) => {
-    const newItems = [...items];
-    const newQty = newItems[index].quantity + delta;
+  // 5. Hàm thay đổi số lượng lên Firebase
+  const handleQuantityChange = async (id, currentQty, delta) => {
+    const newQty = currentQty + delta;
     if (newQty >= 1) {
-      newItems[index].quantity = newQty;
-      setItems(newItems);
+      const itemRef = doc(db, "shopping-items", id);
+      await updateDoc(itemRef, { quantity: newQty });
     }
   };
 
   return (
-    <Container maxWidth="sm" sx={{ mt: 5 }}>
-      <Paper elevation={6} sx={{ p: 4, borderRadius: 4, bgcolor: '#fafafa' }}>
-        <Stack direction="row" spacing={2} justifyContent="center" alignItems="center" sx={{ mb: 3 }}>
-          <ShoppingBagIcon color="primary" fontSize="large" />
-          <Typography variant="h4" sx={{ fontWeight: 800, color: '#1976d2' }}>
-            Shopping List
+    <Container maxWidth="sm" sx={{ mt: 5, mb: 5 }}>
+      <Paper elevation={10} sx={{ p: 4, borderRadius: 4, bgcolor: '#ffffff' }}>
+        <Stack direction="row" spacing={2} justifyContent="center" alignItems="center" sx={{ mb: 4 }}>
+          <ShoppingCartIcon color="primary" sx={{ fontSize: 40 }} />
+          <Typography variant="h4" sx={{ fontWeight: 800, color: '#1976d2', letterSpacing: 1 }}>
+            MY SHOPPING LIST
           </Typography>
         </Stack>
 
-        {/* Khu vực nhập liệu & Hiển thị lỗi trùng tên */}
+        {/* Input Section */}
         <Box sx={{ mb: 3 }}>
           <Box sx={{ display: 'flex', gap: 1 }}>
             <TextField
               fullWidth
-              label="Add an item..."
+              label="What do you need to buy?"
               variant="outlined"
               value={inputValue}
-              error={!!error} // Viền đỏ nếu có lỗi
+              error={!!error}
               onChange={(e) => {
                 setInputValue(e.target.value);
-                if (error) setError(''); // Xóa lỗi khi người dùng bắt đầu gõ lại
+                if (error) setError('');
               }}
               onKeyPress={(e) => e.key === 'Enter' && handleAddButtonClick()}
             />
-            <IconButton color="primary" onClick={handleAddButtonClick} sx={{ p: 1 }}>
-              <AddCircleIcon sx={{ fontSize: 45 }} />
+            <IconButton color="primary" onClick={handleAddButtonClick} sx={{ bgcolor: '#e3f2fd', '&:hover': { bgcolor: '#bbdefb' } }}>
+              <AddCircleIcon sx={{ fontSize: 40 }} />
             </IconButton>
           </Box>
-          {error && (
-            <Alert severity="error" sx={{ mt: 1, borderRadius: 2 }}>
-              {error}
-            </Alert>
-          )}
+          {error && <Alert severity="warning" sx={{ mt: 1.5, borderRadius: 2 }}>{error}</Alert>}
         </Box>
 
         <Divider sx={{ mb: 2 }} />
 
-        {/* Danh sách hiển thị */}
-        <List sx={{ minHeight: '150px' }}>
+        {/* List Section */}
+        <List sx={{ minHeight: '200px' }}>
           {items.length === 0 ? (
-            <Typography align="center" color="text.secondary" sx={{ py: 5 }}>
-              Danh sách đang trống...
+            <Typography align="center" color="text.secondary" sx={{ py: 8, fontStyle: 'italic' }}>
+              Your list is empty. Start adding items!
             </Typography>
           ) : (
-            items.map((item, index) => (
+            items.map((item) => (
               <ListItem 
-                key={index} 
+                key={item.id} 
                 divider 
-                sx={{ bgcolor: item.isSelected ? '#f0f0f0' : 'white', borderRadius: 2, mb: 1 }}
+                sx={{ 
+                  mb: 1, 
+                  borderRadius: 2, 
+                  bgcolor: item.isSelected ? '#f8f9fa' : 'white',
+                  transition: '0.3s'
+                }}
               >
                 <Checkbox 
                   checked={item.isSelected} 
-                  onChange={() => toggleComplete(index)}
+                  onChange={() => toggleComplete(item.id, item.isSelected)}
                   color="success"
                 />
                 <ListItemText 
@@ -127,14 +158,24 @@ const App = () => {
                     color: item.isSelected ? 'text.disabled' : 'text.primary'
                   }}
                 />
-                <ListItemSecondaryAction>
-                  <IconButton size="small" onClick={() => handleQuantityChange(index, -1)} disabled={item.isSelected}>
+                <ListItemSecondaryAction sx={{ display: 'flex', alignItems: 'center' }}>
+                  <IconButton 
+                    size="small" 
+                    onClick={() => handleQuantityChange(item.id, item.quantity, -1)} 
+                    disabled={item.isSelected}
+                  >
                     <ChevronLeftIcon />
                   </IconButton>
-                  <Typography variant="body1" component="span" sx={{ mx: 1, fontWeight: 'bold' }}>
+                  
+                  <Typography sx={{ mx: 1.5, fontWeight: 700, minWidth: '20px', textAlign: 'center' }}>
                     {item.quantity}
                   </Typography>
-                  <IconButton size="small" onClick={() => handleQuantityChange(index, 1)} disabled={item.isSelected}>
+                  
+                  <IconButton 
+                    size="small" 
+                    onClick={() => handleQuantityChange(item.id, item.quantity, 1)} 
+                    disabled={item.isSelected}
+                  >
                     <ChevronRightIcon />
                   </IconButton>
                 </ListItemSecondaryAction>
@@ -143,17 +184,19 @@ const App = () => {
           )}
         </List>
 
-        {/* Hiển thị tổng số lượng theo yêu cầu */}
+        {/* Total Summary Section */}
         <Box sx={{ 
-          mt: 3, p: 2, 
-          bgcolor: '#e3f2fd', 
+          mt: 4, p: 3, 
+          bgcolor: '#1976d2', 
+          color: 'white',
           borderRadius: 3, 
           display: 'flex', 
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          boxShadow: '0 4px 20px rgba(25, 118, 210, 0.3)'
         }}>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>Total (Uncompleted):</Typography>
-          <Typography variant="h4" color="primary" sx={{ fontWeight: 900 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>Total Items to Buy:</Typography>
+          <Typography variant="h4" sx={{ fontWeight: 900 }}>
             {totalItemCount}
           </Typography>
         </Box>
